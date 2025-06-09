@@ -28,8 +28,9 @@ def height_color(h: float) -> Tuple[int, int, int]:
         return (int(155 + 100*t), int(130 + 50*t), int(55))
 
 class FortWarsGUI:
-    def __init__(self, n=16, k=2, replay_path=None):
+    def __init__(self, n=18, k=2, replay_path=None):
         pygame.init()
+        pygame.mixer.init()
         self.n = n
         self.k = k
         self.font = pygame.font.SysFont('consolas', FONT_SIZE)
@@ -48,10 +49,43 @@ class FortWarsGUI:
         self.surface = pygame.display.set_mode(
             (n * self.tile_size, n * self.tile_size + 60), pygame.RESIZABLE
         )
+        self.offset_x = 0
+        self.offset_y = 0
+        self.update_layout()
+        self.check_auto_pass()
         pygame.display.set_caption('Fort Wars')
         if not replay_path:
             self.menu_loop()
         self.main_loop()
+
+    def update_layout(self, w=None, h=None):
+        if w is None or h is None:
+            w, h = self.surface.get_size()
+        self.tile_size = min(w // self.n, (h - 60) // self.n)
+        self.offset_x = (w - self.n * self.tile_size) // 2
+        self.offset_y = (h - 60 - self.n * self.tile_size) // 2
+
+    def play_place_sound(self):
+        try:
+            freq = 440
+            arr = (np.sin(np.linspace(0, 2*np.pi*freq, 4410)) * 32767).astype(np.int16)
+            sound = pygame.sndarray.make_sound(arr)
+            sound.play()
+        except Exception:
+            pass
+
+    def play_pass_sound(self):
+        try:
+            freq = 220
+            arr = (np.sin(np.linspace(0, 2*np.pi*freq, 4410)) * 32767).astype(np.int16)
+            sound = pygame.sndarray.make_sound(arr)
+            sound.play()
+        except Exception:
+            pass
+
+    def check_auto_pass(self):
+        while not self.replay_mode and not self.gs.any_valid_move(self.gs.current_player):
+            self.gs.pass_turn(self.gs.current_player)
 
     # ------------------------------------------------------------------
     def draw(self):
@@ -63,8 +97,8 @@ class FortWarsGUI:
                 h = float(self.gs.terrain[x, y])
                 color = height_color(h)
                 rect = pygame.Rect(
-                    y * self.tile_size,
-                    x * self.tile_size,
+                    self.offset_x + y * self.tile_size,
+                    self.offset_y + x * self.tile_size,
                     self.tile_size - MARGIN,
                     self.tile_size - MARGIN,
                 )
@@ -76,25 +110,38 @@ class FortWarsGUI:
                 (self.n * self.tile_size, self.n * self.tile_size), pygame.SRCALPHA
             )
             for f in self.gs.forts:
-                cx = f['y'] * self.tile_size + self.tile_size // 2
-                cy = f['x'] * self.tile_size + self.tile_size // 2
+                cx = self.offset_x + f['y'] * self.tile_size + self.tile_size // 2
+                cy = self.offset_y + f['x'] * self.tile_size + self.tile_size // 2
                 color = (255,0,0,60) if f['player']==0 else (0,0,255,60)
                 pygame.draw.circle(mask, color, (cx, cy), self.gs.k * self.tile_size, 0)
             surf.blit(mask, (0,0))
 
         # Draw forts
         for f in self.gs.forts:
-            cx = f['y'] * self.tile_size + self.tile_size // 2
-            cy = f['x'] * self.tile_size + self.tile_size // 2
+            cx = self.offset_x + f['y'] * self.tile_size + self.tile_size // 2
+            cy = self.offset_y + f['x'] * self.tile_size + self.tile_size // 2
             color = (255,0,0) if f['player']==0 else (0,0,255)
             pygame.draw.circle(surf, (0,0,0), (cx, cy), self.tile_size // 2 - 2)
             pygame.draw.circle(surf, color, (cx, cy), self.tile_size // 2 - 4)
+            # lines to adjacent forts of same player
+            for other in self.gs.forts:
+                if other is f or other['player'] != f['player']:
+                    continue
+                if self.gs.distance2(f['x'], f['y'], other['x'], other['y']) <= 1:
+                    ox = self.offset_x + other['y'] * self.tile_size + self.tile_size // 2
+                    oy = self.offset_y + other['x'] * self.tile_size + self.tile_size // 2
+                    pygame.draw.line(surf, color, (cx, cy), (ox, oy), 2)
+
+        # Highlight current player
+        border = pygame.Rect(self.offset_x, self.offset_y, self.n * self.tile_size, self.n * self.tile_size)
+        border_color = (255,0,0) if self.gs.current_player==0 else (0,0,255)
+        pygame.draw.rect(surf, border_color, border, 3)
 
         # UI bar
-        bar = pygame.Rect(0, self.n * self.tile_size, self.n * self.tile_size, 60)
+        bar = pygame.Rect(self.offset_x, self.offset_y + self.n * self.tile_size, self.n * self.tile_size, 60)
         pygame.draw.rect(surf, (40,40,40), bar)
         # Checkbox influence
-        cb_rect = pygame.Rect(10, self.n * self.tile_size + 20, CHECKBOX_SIZE, CHECKBOX_SIZE)
+        cb_rect = pygame.Rect(self.offset_x + 10, self.offset_y + self.n * self.tile_size + 20, CHECKBOX_SIZE, CHECKBOX_SIZE)
         pygame.draw.rect(surf, (255,255,255), cb_rect, 2)
         if self.show_influence:
             pygame.draw.line(surf, (255,255,255), cb_rect.topleft, cb_rect.bottomright, 2)
@@ -108,34 +155,38 @@ class FortWarsGUI:
         surf.blit(
             info,
             (
-                self.n * self.tile_size // 2 - info.get_width() // 2,
-                self.n * self.tile_size + 2,
+                self.offset_x + self.n * self.tile_size // 2 - info.get_width() // 2,
+                self.offset_y + self.n * self.tile_size + 2,
             ),
         )
 
         # Hover info
         mx, my = pygame.mouse.get_pos()
-        grid_x = my // self.tile_size
-        grid_y = mx // self.tile_size
+        grid_x = (my - self.offset_y) // self.tile_size
+        grid_y = (mx - self.offset_x) // self.tile_size
         hovered_height = None
         if 0 <= grid_x < self.n and 0 <= grid_y < self.n:
             hovered_height = float(self.gs.terrain[grid_x, grid_y])
         for f in self.gs.forts:
             if f['x'] == grid_x and f['y'] == grid_y:
+                prod = self.gs.production(f['height'])
+                if self.gs._adjacent_bonus(f) > 1.0:
+                    prod = int(prod * 1.5)
                 lines = [
                     f"Player: {f['player']}",
                     f"Coordinate: ({f['x']},{f['y']})",
                     f"Height: {f['height']:.2f}",
-                    f"Prod/turn: {self.gs.production(f['height'])}",
+                    f"Prod/turn: {prod}",
                 ]
                 self.draw_tooltip(lines, mx, my)
                 break
         else:
             if hovered_height is not None:
+                prod = self.gs.production(hovered_height)
                 lines = [
                     f"Coordinate: ({grid_x},{grid_y})",
                     f"Height: {hovered_height:.2f}",
-                    f"Prod/turn: {self.gs.production(hovered_height)}",
+                    f"Prod/turn: {prod}",
                 ]
                 self.draw_tooltip(lines, mx, my)
 
@@ -197,14 +248,20 @@ class FortWarsGUI:
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
             if event.type == pygame.VIDEORESIZE:
-                self.tile_size = min(event.w // self.n, (event.h - 60) // self.n)
                 self.surface = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                self.update_layout(event.w, event.h)
             if event.type == pygame.MOUSEBUTTONDOWN and not self.replay_mode:
+                mx, my = event.pos
                 if event.button == 1:
-                    mx, my = event.pos
-                    x = my // self.tile_size
-                    y = mx // self.tile_size
-                    self.gs.place_fort(self.gs.current_player, x, y)
+                    x = (my - self.offset_y) // self.tile_size
+                    y = (mx - self.offset_x) // self.tile_size
+                    if self.gs.place_fort(self.gs.current_player, x, y):
+                        self.play_place_sound()
+                        self.check_auto_pass()
+                if event.button == 3:
+                    self.gs.pass_turn(self.gs.current_player)
+                    self.play_pass_sound()
+                    self.check_auto_pass()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     pygame.quit(); sys.exit()
@@ -242,12 +299,16 @@ class FortWarsGUI:
         if event.key == pygame.K_p:
             # pass turn
             self.gs.pass_turn(self.gs.current_player)
+            self.play_pass_sound()
+            self.check_auto_pass()
         # Place fort with mouse + Enter shortcut
         if event.key == pygame.K_RETURN:
             mx, my = pygame.mouse.get_pos()
-            x = my // self.tile_size
-            y = mx // self.tile_size
-            self.gs.place_fort(self.gs.current_player, x, y)
+            x = (my - self.offset_y) // self.tile_size
+            y = (mx - self.offset_x) // self.tile_size
+            if self.gs.place_fort(self.gs.current_player, x, y):
+                self.play_place_sound()
+                self.check_auto_pass()
 
     def save_current_game(self):
         now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -258,7 +319,7 @@ class FortWarsGUI:
 
 def main():
     parser = argparse.ArgumentParser(description='Fort Wars GUI')
-    parser.add_argument('--n', type=int, default=16)
+    parser.add_argument('--n', type=int, default=18)
     parser.add_argument('--k', type=int, default=2)
     parser.add_argument('--replay', type=str, help='Path JSON saved game')
     args = parser.parse_args()
