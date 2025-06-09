@@ -22,4 +22,7 @@ def generate_terrain(n: int, smooth_steps: int = 4, seed: int | None = None) -> 
             for j in range(3):
                 out += padded[i:i+n, j:j+n] * kernel[i, j]
         terrain = out
+
+    # accentua zone alte e basse per avere più acqua e rilievi
+    terrain = np.clip(terrain ** 1.5, 0.0, 1.0)
     return terrain

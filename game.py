@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple
 import numpy as np
 
-COST_FORT = 1000
+COST_FORT = 800
 
 class GameState:
     """Logica principale del gioco"""
@@ -30,6 +30,9 @@ class GameState:
             return False
         if self.credits[player] < COST_FORT:
             return False
+        # altezza della casella - niente forti nell'acqua
+        if float(self.terrain[x, y]) < 0.3:
+            return False
         # Check already occupied
         for f in self.forts:
             if f['x'] == x and f['y'] == y:
@@ -42,12 +45,20 @@ class GameState:
         """Return credits produced per turn based on fort height."""
         return int((1.0 - height) * 200)
 
+    def _adjacent_bonus(self, fort: Dict) -> float:
+        for other in self.forts:
+            if other is fort:
+                continue
+            if other['player'] == fort['player'] and self.distance2(fort['x'], fort['y'], other['x'], other['y']) <= 1:
+                return 1.5
+        return 1.0
+
     def place_fort(self, player: int, x: int, y: int) -> bool:
         if not self.can_place(player, x, y):
             return False
         h = float(self.terrain[x, y])
         self.credits[player] -= COST_FORT
-        self.scores[player] += h
+        self.scores[player] += h ** 2
         self.forts.append({'player': player, 'x': x, 'y': y, 'height': h, 'turn': self.turn_count})
         self.history.append({'type': 'place', 'player': player, 'x': x, 'y': y})
         self._end_turn()
@@ -57,7 +68,9 @@ class GameState:
         # produce crediti
         for f in self.forts:
             if f['player'] == player:
-                self.credits[player] += self.production(f['height'])
+                prod = self.production(f['height'])
+                prod = int(prod * self._adjacent_bonus(f))
+                self.credits[player] += prod
         self.history.append({'type': 'pass', 'player': player})
         self._end_turn()
 
