@@ -11,7 +11,8 @@ Un prototipo minimale del gioco turn–based progettato per agenti di RL con int
   * Hover con info sul forte.
   * Checkbox/shortcut **I** per mostrare le aree di influenza (raggio *k*).
   * **S** per salvare la partita corrente.
-  * **P** per passare il turno, **INVIO** per piazzare il forte sotto al cursore.
+  * **P** per passare il turno, click sinistro o **INVIO** per piazzare il forte.
+  * Finestra ridimensionabile e menu iniziale per caricare vecchie partite.
   * Replay: `python play.py --replay path_to_saved.json`.
   * Nel replay **SPAZIO** avanza di un’azione, **R** avvia/arresta autoplay.
 
