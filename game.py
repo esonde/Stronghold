@@ -39,8 +39,8 @@ class GameState:
         return True
 
     def production(self, height: float) -> int:
-        # più basso -> più crediti
-        return int((1.0 - height) * 100)
+        """Return credits produced per turn based on fort height."""
+        return int((1.0 - height) * 200)
 
     def place_fort(self, player: int, x: int, y: int) -> bool:
         if not self.can_place(player, x, y):
